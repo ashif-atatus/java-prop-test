@@ -1,10 +1,13 @@
-package com.example.service1;
+package com.jpt.service1;
 
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.client.RestTemplate;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.time.LocalDateTime;
 import java.util.HashMap;
@@ -16,6 +19,9 @@ public class Service1Controller {
 
     @Autowired
     private RestTemplate restTemplate;
+
+    @Autowired
+    private KafkaProducerService kafkaProducerService;
 
     @Value("${SERVICE2_URL:http://localhost:3502}")
     private String service2Url;
@@ -78,5 +84,34 @@ public class Service1Controller {
             
             return errorResponse;
         }
+    }
+
+    @PostMapping("/produce-kafka-message")
+    public Map<String, Object> produceKafkaMessage(@RequestBody Map<String, Object> requestBody) {
+        Map<String, Object> response = new HashMap<>();
+
+        try {
+            // 🛠️ Build Kafka message structure
+            Map<String, Object> kafkaPayload = new HashMap<>();
+            kafkaPayload.put("from", "Service1");
+            kafkaPayload.put("timestamp", LocalDateTime.now().toString());
+            kafkaPayload.put("receivedData", requestBody);  // Wrap the input inside 'receivedData'
+
+            // 🔄 Convert to JSON
+            ObjectMapper mapper = new ObjectMapper();
+            String messageJson = mapper.writeValueAsString(kafkaPayload);
+
+            // 🚀 Send to Kafka
+            kafkaProducerService.sendMessage(messageJson);
+
+            // 🎯 Response
+            response.put("status", "Message sent to Kafka successfully");
+            response.put("sentData", kafkaPayload);
+        } catch (Exception e) {
+            response.put("status", "Error");
+            response.put("error", e.getMessage());
+        }
+
+        return response;
     }
 }

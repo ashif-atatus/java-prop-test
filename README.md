@@ -1,113 +1,148 @@
-# Java Spring Boot Services with Docker Compose & Atatus Monitoring
+# Java Spring Boot Microservices with Kafka, Docker Compose & Atatus Monitoring
 
-This project contains two Spring Boot services that communicate with each other, featuring APM monitoring with Atatus and optimized multi-stage Docker builds.
+This project demonstrates a modern microservices architecture with two Spring Boot services that communicate via HTTP and Apache Kafka, featuring comprehensive APM monitoring with Atatus and optimized multi-stage Docker builds.
 
-- **Service 1** (Port 3501): Main service that can call Service 2
-- **Service 2** (Port 3502): Secondary service that provides data
+- **Service 1** (Port 3501): Producer service with HTTP client capabilities and Kafka publishing
+- **Service 2** (Port 3502): Consumer service with HTTP capabilities and Kafka consumption from "JPT" topic
+- **Apache Kafka** (Port 9092): Message broker for asynchronous communication
+
+## Package Structure
+- Services use the `com.jpt` package naming convention
+- **Service 1**: `com.jpt.service1` - Contains controller, Kafka producer, and HTTP client logic
+- **Service 2**: `com.jpt.service2` - Contains controller, Kafka consumer, and HTTP client logic
 
 ## Features
 
 ### Service Endpoints
-Each service has three endpoints:
-- `/` - Returns service information with environment details
-- `/data` - Returns random data with timestamps
-- `/call` - Service 1 calls Service 2's `/data` endpoint (and vice versa)
+Each service exposes the following REST endpoints:
+- `/health` - Returns comprehensive service information with environment details
+- `/data` - Returns random data with timestamps and service metadata
+- `/call` - Cross-service HTTP communication (Service 1 ↔ Service 2)
+- `/produce-kafka-message` - (Service 1 only) Sends messages to Kafka "JPT" topic
+
+### Messaging & Communication
+- **Apache Kafka Integration** - Service 1 produces to "JPT" topic, Service 2 consumes from it
+- **HTTP REST APIs** - Synchronous service-to-service communication
+- **Fixed Topic Messaging** - Single "JPT" topic for producer-consumer pattern
+- **JSON Message Processing** - Service 2 parses JSON messages with acknowledgment
 
 ### Monitoring & Observability
 - **Atatus APM Integration** - Full application performance monitoring
-- **Distributed Tracing** - End-to-end request tracking between services
+- **Distributed Tracing** - End-to-end request tracking across services and Kafka
 - **JVM Metrics** - Memory, GC, and thread monitoring
-- **Error Tracking** - Exception monitoring with stack traces
+- **Error Tracking** - Exception monitoring with detailed stack traces
+- **Kafka Monitoring** - Message flow and consumer lag tracking
 
-### Docker Optimization
-- **Multi-stage builds** - Optimized image sizes (~70% reduction)
-- **JDK 21** - Latest Java version with performance improvements
-- **Maven wrapper** - Automatic dependency management
-- **Environment-based configuration** - Flexible deployment settings
+### Infrastructure & DevOps
+- **Multi-stage Docker builds** - Optimized image sizes with automatic dependency downloads
+- **JDK 21** - Latest Java LTS version with performance improvements
+- **KRaft Kafka** - Modern Kafka without Zookeeper dependency
+- **Environment-based configuration** - Flexible deployment with separated configs
+- **Auto-downloaded dependencies** - Maven wrapper and Atatus agent downloaded during build
 
 ## Prerequisites
 
 - Docker & Docker Compose
-- Atatus Java agent JAR file (see setup below)
+- Internet connection (for automatic dependency downloads)
 
 ## Setup Instructions
 
-### 1. Atatus Agent Setup
-Download the Atatus Java agent and place it in both service directories:
+### 1. Automatic Atatus Agent Setup
+The Dockerfiles automatically download the Atatus Java agent during the build process. No manual download required!
 
-```bash
-# Download Atatus Java agent
-wget https://s3.amazonaws.com/download.atatus.com/atatus-java/atatus-java-agent-latest.jar
+The multi-stage build process:
+1. **Build Stage**: Downloads Atatus agent from official S3 repository
+2. **Runtime Stage**: Copies the agent to the final container image
 
-# Copy to both services
-cp atatus-java-agent-latest.jar service1/atatus-java-agent.jar
-cp atatus-java-agent-latest.jar service2/atatus-java-agent.jar
+```dockerfile
+# Build stage automatically downloads the agent
+RUN curl -o atatus-java-agent.jar https://atatus-artifacts.s3.amazonaws.com/atatus-java/downloads/latest/atatus-java-agent.jar
+
+# Runtime stage includes the agent
+COPY --from=builder /app/atatus-java-agent.jar atatus-java-agent.jar
 ```
 
 ### 2. Environment Configuration
-The project uses environment variables for configuration. The `.env` file contains Atatus configuration:
+The project uses separate environment files for different concerns:
 
+- `.env.atatus` - APM monitoring configuration
+- `.env.kafka` - Message broker settings (used internally by Kafka container)
+
+### Environment Files Overview
+
+#### Atatus Configuration (`.env.atatus`)
 ```bash
-# Atatus configuration is already in .env
-# Update ATATUS_LICENSE_KEY with your actual license key
+ATATUS_LICENSE_KEY=lic_apm_041b44a56fa54faaba026283c2b8970e
+ATATUS_ENABLE=true
+ATATUS_ENVIRONMENT=Production
+ATATUS_LOG_LEVEL=info
+ATATUS_TRACING=true
+ATATUS_LOG_BODY=all
+ATATUS_NOTIFY_HOST=https://demo.atatus.com
+ATATUS_ANALYTICS=true
+ATATUS_ANALYTICS_CAPTURE_OUTGOING=true
+ATATUS_DEBUG=true
 ```
 
-### Atatus Environment Variables
+#### Service Configuration (Docker Compose)
+Additional environment variables are configured in `docker-compose.yml`:
 
-| Variable | Description | Current Value |
-|----------|-------------|---------------|
-| `ATATUS_LICENSE_KEY` | Your Atatus license key | `<your-license-key>` |
-| `ATATUS_DEBUG` | Enable debug logging | `true` |
-| `ATATUS_ENABLE` | Enable/disable monitoring | `true` |
-| `ATATUS_LOG_LEVEL` | Agent log level | `info` |
-| `ATATUS_TRACING` | Distributed tracing | `true` |
-| `ATATUS_ANALYTICS` | Analytics collection | `true` |
-| `ATATUS_ENVIRONMENT` | Environment identifier | `Production` |
-| `ATATUS_NOTIFY_HOST` | Atatus server URL | `https://demo.atatus.com` |
-
-### Service Configuration
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `PORT` | Service port (from Docker) | `3501/3502` |
-| `SERVICE2_URL` | Service 2 endpoint for Service 1 | `http://service2:3502` |
-| `SERVICE_1_URL` | Service 1 endpoint for Service 2 | `http://service1:3501` |
-| `ATATUS_APP_NAME` | Service name in Atatus | `JPT-Service-1/2` |
+| Variable | Description | Service 1 | Service 2 |
+|----------|-------------|-----------|-----------|
+| `PORT` | Service port | `3501` | `3502` |
+| `SERVICE2_URL` | Target URL for Service 1 | `http://service2:3502` | - |
+| `SERVICE_1_URL` | Target URL for Service 2 | - | `http://service1:3501` |
+| `ATATUS_APP_NAME` | Application name in Atatus | `JPT-Service-1` | `JPT-Service-2` |
+| `KAFKA_BOOTSTRAP_SERVERS` | Kafka connection string | `kafka:9092` | `kafka:9092` |
 
 ## Running the Services
 
 ### Quick Start
 ```bash
-# Ensure you have the Atatus agent files in place
-ls service1/atatus-java-agent.jar service2/atatus-java-agent.jar
-
-# Build and start both services
+# Build and start all services (includes Kafka broker)
 docker-compose up --build
+
+# Run in detached mode
+docker-compose up --build -d
 ```
 
 ### The services will be available at:
 - **Service 1**: http://localhost:3501
-- **Service 2**: http://localhost:3502
+- **Service 2**: http://localhost:3502  
+- **Kafka Broker**: kafka:9092 (internal Docker network)
 - **Atatus Dashboard**: https://demo.atatus.com (with your credentials)
+
+### Build Process
+The Docker build automatically:
+1. Downloads Maven wrapper (if needed)
+2. Downloads all dependencies
+3. Downloads latest Atatus Java agent
+4. Compiles and packages the Spring Boot applications
+5. Creates optimized runtime containers with JDK 21
 
 ## Testing the Endpoints
 
 ### Service 1 Endpoints:
 ```bash
-# Basic endpoint - shows service info and environment
-curl http://localhost:3501/
+# Health check - shows service info and environment details
+curl http://localhost:3501/health
 
 # Get random data from Service 1
 curl http://localhost:3501/data
 
 # Call Service 2 from Service 1 (creates distributed trace)
 curl http://localhost:3501/call
+
+# Send message to Kafka topic (Service 1 only)
+curl -X POST http://localhost:3501/produce-kafka-message \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Hello Kafka!", "type": "test"}'
 ```
 
 ### Service 2 Endpoints:
 ```bash
-# Basic endpoint - shows service info and environment
-curl http://localhost:3502/
+# Health check - shows service info and environment details  
+curl http://localhost:3502/health
 
 # Get random data from Service 2
 curl http://localhost:3502/data
@@ -116,103 +151,301 @@ curl http://localhost:3502/data
 curl http://localhost:3502/call
 ```
 
+### End-to-End Testing
+```bash
+# Test the complete flow: HTTP + Kafka + Distributed tracing
+curl http://localhost:3501/call && \
+curl -X POST http://localhost:3501/produce-kafka-message \
+  -H "Content-Type: application/json" \
+  -d '{"message": "End-to-end test", "timestamp": "'$(date)'"}'
+
+# Monitor Service 2 logs to see Kafka message consumption
+docker-compose logs -f service2
+```
+
 ## Monitoring & Debugging
 
 ### Atatus Dashboard
 1. **Login** to https://demo.atatus.com with your credentials
 2. **View Applications**: You'll see `JPT-Service-1` and `JPT-Service-2`
-3. **Distributed Traces**: Monitor `/call` endpoints for cross-service traces
-4. **Performance Metrics**: View response times, throughput, and errors
+3. **Distributed Traces**: Monitor `/call` endpoints for cross-service HTTP traces
+4. **Kafka Traces**: View message publishing and consumption patterns
+5. **Performance Metrics**: Analyze response times, throughput, and error rates
+6. **JVM Monitoring**: Track memory usage, garbage collection, and thread performance
 
 ### Container Logs
 ```bash
-# View all services
+# View all services including Kafka
 docker-compose logs
 
 # View specific service
 docker-compose logs service1
 docker-compose logs service2
+docker-compose logs kafka
 
 # Follow logs in real-time
 docker-compose logs -f
+
+# Filter for specific patterns
+docker-compose logs | grep -i "error\|exception\|atatus"
 ```
 
 ### Verify Atatus Integration
 Check container logs for Atatus initialization messages:
 ```bash
 # Look for Atatus startup messages
-docker-compose logs | grep -i atatus
+docker-compose logs service1 | grep -i atatus
+docker-compose logs service2 | grep -i atatus
+
+# Verify Kafka connectivity
+docker-compose logs | grep -i kafka
+```
+
+### Kafka Monitoring
+```bash
+# Check Kafka container status
+docker-compose ps kafka
+
+# View Kafka startup logs including cluster ID generation
+docker-compose logs kafka | head -20
+
+# Look for dynamically generated cluster ID
+docker-compose logs kafka | grep "Generated Cluster ID"
+
+# View Kafka logs for topic creation and message handling
+docker-compose logs kafka | grep -i topic
+
+# Monitor Kafka internals (from inside Kafka container)
+docker-compose exec kafka kafka-topics --bootstrap-server localhost:9092 --list
 ```
 
 ## Architecture
 
 ### Technology Stack
-- **Java 21** - Latest LTS Java version
-- **Spring Boot 3.2.0** - Modern Spring framework
-- **Maven** - Dependency management with wrapper
-- **Docker Multi-stage** - Optimized container builds
-- **Atatus APM** - Application performance monitoring
+- **Java 21** - Latest LTS Java version with enhanced performance
+- **Spring Boot 3.2.0** - Modern Spring framework with native image support
+- **Apache Kafka 7.6.0** - High-throughput distributed streaming platform (KRaft mode)
+- **Maven** - Dependency management with automatic wrapper download
+- **Docker Multi-stage** - Optimized container builds with automated dependency management
+- **Atatus APM** - Comprehensive application performance monitoring with distributed tracing
 
-### Service Communication
-- Services communicate via HTTP within Docker network
-- Each service runs on its designated port (3501, 3502)
-- Docker Compose manages networking and dependencies
-- Environment variables handle service discovery
+### Service Communication Patterns
+- **Synchronous HTTP**: RESTful APIs for immediate request-response patterns
+- **Asynchronous Messaging**: Kafka for decoupled, scalable communication
+- **Service Discovery**: Docker Compose networking with hostname resolution
+- **Load Balancing**: Ready for horizontal scaling with container orchestration
+
+### Kafka Architecture (KRaft Mode)
+```
+Kafka Cluster (Single Node):
+├── Controller Role: Topic/partition management
+├── Broker Role: Message storage and delivery  
+├── No Zookeeper: Simplified architecture
+├── Dynamic Cluster ID: Generated at runtime with random UUID
+└── "JPT" Topic: Single topic for producer-consumer communication
+```
 
 ### Docker Architecture
 ```
 Build Stage (openjdk:21-jdk-slim):
-├── Maven wrapper setup
-├── Dependency download
-├── Source compilation
-└── JAR packaging
+├── Maven wrapper auto-download
+├── Dependency resolution and download
+├── Atatus agent download (latest version)
+├── Source compilation and packaging
+└── JAR file creation
 
 Runtime Stage (openjdk:21-jdk-slim):
-├── Atatus Java agent
-├── Built JAR file
-└── Minimal runtime environment
+├── Atatus Java agent integration
+├── Optimized JAR file
+├── Minimal runtime environment
+└── JVM performance tuning
+```
+
+### Network Architecture
+```
+Docker Network (app-network):
+├── service1:3501 → HTTP + Kafka Producer
+├── service2:3502 → HTTP + Kafka Consumer  
+├── kafka:9092 → Message Broker
+└── Cross-service communication via hostnames
 ```
 
 ## Troubleshooting
 
 ### Common Issues
 
-1. **Atatus agent missing**:
+1. **Services won't start**:
    ```bash
-   # Ensure agent JAR exists in both directories
-   ls -la service*/atatus-java-agent.jar
-   ```
-
-2. **Maven wrapper errors**:
-   ```bash
-   # Clean rebuild
+   # Check if ports are available
+   netstat -tlnp | grep -E '3501|3502|9092'
+   
+   # Clean rebuild with no cache
    docker-compose down
    docker-compose up --build --no-cache
    ```
 
-3. **Service communication errors**:
+2. **Kafka connectivity issues**:
+   ```bash
+   # Verify Kafka is running
+   docker-compose ps kafka
+   
+   # Check Kafka logs (including cluster ID generation)
+   docker-compose logs kafka
+   
+   # Look for cluster ID generation in logs
+   docker-compose logs kafka | grep "Generated Cluster ID"
+   
+   # Test Kafka from inside container
+   docker-compose exec kafka kafka-topics --bootstrap-server localhost:9092 --list
+   ```
+
+3. **Atatus agent not working**:
+   ```bash
+   # Verify agent download in build logs
+   docker-compose up --build | grep -i atatus
+   
+   # Check if agent file exists in container
+   docker-compose exec service1 ls -la atatus-java-agent.jar
+   
+   # Verify environment variables
+   docker-compose exec service1 env | grep ATATUS
+   ```
+
+4. **Service communication errors**:
    ```bash
    # Check Docker network
    docker network ls
-   docker network inspect java-propagation-test_app-network
+   docker network inspect java-propagation-test_default
+   
+   # Test inter-service connectivity
+   docker-compose exec service1 curl http://service2:3502/health
    ```
+
+5. **Memory or performance issues**:
+   ```bash
+   # Monitor container resource usage
+   docker stats
+   
+   # Check JVM memory settings
+   docker-compose logs service1 | grep -i memory
+   ```
+
+### Debug Mode
+Enable additional debugging by modifying `.env.atatus`:
+```bash
+# Enhanced debugging
+ATATUS_DEBUG=true
+ATATUS_LOG_LEVEL=debug
+ATATUS_LOG_BODY=all
+```
+
+### Performance Tuning
+For production deployment, consider these JVM optimizations in Dockerfile:
+```dockerfile
+CMD [ \
+  "java", \
+  "-javaagent:atatus-java-agent.jar", \
+  "-Xms512m", "-Xmx1g", \
+  "-XX:+UseG1GC", \
+  "-XX:MaxGCPauseMillis=200", \
+  "-jar", "app.jar" \
+]
+```
 
 ## Stopping the Services
 
 ```bash
-# Stop services
+# Stop all services gracefully
 docker-compose down
 
-# Stop and remove volumes
+# Stop and remove volumes (includes Kafka data)
 docker-compose down -v
 
-# Stop and remove all (including images)
+# Stop and remove everything (images, containers, volumes)
 docker-compose down --rmi all -v
+
+# Force stop if services are unresponsive
+docker-compose kill && docker-compose down
 ```
 
 ## Development Notes
 
-- Services automatically detect environment variables from Docker
-- Atatus traces inter-service communication automatically
-- Multi-stage builds reduce final image size significantly
-- JVM performance is optimized for containerized environments
+### Container Optimization
+- **Multi-stage builds** reduce final image size by ~70%
+- **Layer caching** optimizes build times for dependency downloads
+- **JDK 21** provides enhanced performance and reduced memory footprint
+- **Automatic dependency management** eliminates manual setup requirements
+
+### Monitoring Integration
+- **Atatus** automatically instruments HTTP requests, database calls, and JVM metrics
+- **Distributed tracing** tracks requests across service boundaries and Kafka messages
+- **Real-time alerting** can be configured for error rates and performance thresholds
+- **Custom metrics** can be added using Atatus SDK annotations
+
+### Kafka Configuration
+- **KRaft mode** eliminates Zookeeper dependency for simplified deployment
+- **Dynamic cluster ID** generated at runtime using `kafka-storage random-uuid`
+- **Single topic setup** using "JPT" topic for producer-consumer pattern
+- **Single broker setup** suitable for development; easily scalable for production
+- **Persistent volumes** ensure message durability across container restarts
+- **Auto-formatting** storage directory with generated cluster ID on startup
+
+### Production Considerations
+- Replace single Kafka broker with cluster setup
+- Implement proper security (SSL/SASL) for Kafka and service communication
+- Add health checks and liveness probes for Kubernetes deployment
+- Configure appropriate resource limits and requests
+- Set up log aggregation (ELK stack) alongside Atatus monitoring
+- Implement circuit breakers for resilient service communication
+
+### Testing Strategy
+- **Unit tests**: Mock external dependencies including Kafka
+- **Integration tests**: Use Testcontainers for real Kafka testing
+- **End-to-end tests**: Validate complete request flows and tracing
+- **Performance tests**: Load test with realistic message volumes
+
+### Scaling Guidelines
+```yaml
+# Example horizontal scaling with Docker Compose
+services:
+  service1:
+    deploy:
+      replicas: 3
+  kafka:
+    deploy:
+      replicas: 3  # Kafka cluster setup
+```
+
+## Project Structure
+
+```
+java-propagation-test/
+├── service1/
+│   ├── src/main/java/com/jpt/service1/
+│   │   ├── Service1Application.java     # Main Spring Boot application
+│   │   ├── Service1Controller.java      # REST endpoints and HTTP client
+│   │   └── KafkaProducerService.java    # Kafka message publishing
+│   ├── pom.xml                          # Maven dependencies (Spring Boot, Kafka)
+│   └── Dockerfile                       # Multi-stage build with Atatus agent
+├── service2/
+│   ├── src/main/java/com/jpt/service2/
+│   │   ├── Service2Application.java     # Main Spring Boot application  
+│   │   ├── Service2Controller.java      # REST endpoints and HTTP client
+│   │   └── KafkaConsumerService.java    # Kafka message consumption
+│   ├── pom.xml                          # Maven dependencies (Spring Boot, Kafka)
+│   └── Dockerfile                       # Multi-stage build with Atatus agent
+├── docker-compose.yml                   # Service orchestration (Services + Kafka)
+├── .env.atatus                          # APM monitoring configuration
+├── .env.kafka                           # Kafka broker settings
+└── README.md                            # This documentation
+```
+
+### Key Files Description
+
+- **Application Classes**: Standard Spring Boot main classes with `@SpringBootApplication`
+- **Controller Classes**: REST endpoints (`/health`, `/data`, `/call`) with HTTP client logic
+- **KafkaProducerService**: Service 1 only - publishes messages to "JPT" topic
+- **KafkaConsumerService**: Service 2 only - consumes messages from "JPT" topic with JSON parsing
+- **Dockerfiles**: Multi-stage builds that automatically download Atatus agent
+- **Docker Compose**: Orchestrates all services with proper networking and environment variables
+- **Environment Files**: Separated configuration for APM monitoring and Kafka settings
