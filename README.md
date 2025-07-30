@@ -84,6 +84,21 @@ ATATUS_ANALYTICS_CAPTURE_OUTGOING=true
 ATATUS_DEBUG=true
 ```
 
+#### Kafka Configuration (`.env.kafka`)
+```bash
+KAFKA_NODE_ID=1
+KAFKA_PROCESS_ROLES=controller,broker
+KAFKA_CONTROLLER_QUORUM_VOTERS=1@kafka:9093
+KAFKA_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093
+KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
+KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER
+KAFKA_INTER_BROKER_LISTENER_NAME=PLAINTEXT
+KAFKA_LOG_DIRS=/var/lib/kafka/data
+```
+
+Note: The Kafka cluster ID is set directly in `docker-compose.yml` as `aDNkoppCRZmcMOQLUghOCA`.
+
 #### Service Configuration (Docker Compose)
 Additional environment variables are configured in `docker-compose.yml`:
 
@@ -94,6 +109,22 @@ Additional environment variables are configured in `docker-compose.yml`:
 | `SERVICE_1_URL` | Target URL for Service 2 | - | `http://service1:3501` |
 | `ATATUS_APP_NAME` | Application name in Atatus | `JPT-Service-1` | `JPT-Service-2` |
 | `KAFKA_BOOTSTRAP_SERVERS` | Kafka connection string | `kafka:9092` | `kafka:9092` |
+
+#### Kafka Environment Variables (Docker Compose)
+Kafka configuration in `docker-compose.yml`:
+
+| Variable | Value | Description |
+|----------|-------|-------------|
+| `KAFKA_NODE_ID` | `1` | Node identifier in KRaft cluster |
+| `KAFKA_PROCESS_ROLES` | `broker,controller` | Kafka process roles |
+| `KAFKA_CONTROLLER_LISTENER_NAMES` | `CONTROLLER` | Controller listener name |
+| `KAFKA_LISTENER_SECURITY_PROTOCOL_MAP` | `CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT` | Security protocol mapping |
+| `KAFKA_CONTROLLER_QUORUM_VOTERS` | `1@kafka:9093` | Controller quorum voters |
+| `KAFKA_LISTENERS` | `PLAINTEXT://0.0.0.0:9092,CONTROLLER://kafka:9093` | Kafka listeners |
+| `KAFKA_ADVERTISED_LISTENERS` | `PLAINTEXT://kafka:9092` | Advertised listeners |
+| `KAFKA_INTER_BROKER_LISTENER_NAME` | `PLAINTEXT` | Inter-broker listener |
+| `KAFKA_LOG_DIRS` | `/var/lib/kafka/data` | Log directory |
+| `CLUSTER_ID` | `aDNkoppCRZmcMOQLUghOCA` | Static cluster identifier |
 
 ## Running the Services
 
@@ -206,11 +237,8 @@ docker-compose logs | grep -i kafka
 # Check Kafka container status
 docker-compose ps kafka
 
-# View Kafka startup logs including cluster ID generation
+# View Kafka startup logs
 docker-compose logs kafka | head -20
-
-# Look for dynamically generated cluster ID
-docker-compose logs kafka | grep "Generated Cluster ID"
 
 # View Kafka logs for topic creation and message handling
 docker-compose logs kafka | grep -i topic
@@ -241,7 +269,7 @@ Kafka Cluster (Single Node):
 ├── Controller Role: Topic/partition management
 ├── Broker Role: Message storage and delivery  
 ├── No Zookeeper: Simplified architecture
-├── Dynamic Cluster ID: Generated at runtime with random UUID
+├── Static Cluster ID: aDNkoppCRZmcMOQLUghOCA
 └── "JPT" Topic: Single topic for producer-consumer communication
 ```
 
@@ -289,11 +317,8 @@ Docker Network (app-network):
    # Verify Kafka is running
    docker-compose ps kafka
    
-   # Check Kafka logs (including cluster ID generation)
+   # Check Kafka logs
    docker-compose logs kafka
-   
-   # Look for cluster ID generation in logs
-   docker-compose logs kafka | grep "Generated Cluster ID"
    
    # Test Kafka from inside container
    docker-compose exec kafka kafka-topics --bootstrap-server localhost:9092 --list
@@ -384,11 +409,10 @@ docker-compose kill && docker-compose down
 
 ### Kafka Configuration
 - **KRaft mode** eliminates Zookeeper dependency for simplified deployment
-- **Dynamic cluster ID** generated at runtime using `kafka-storage random-uuid`
+- **Static cluster ID** configured as `aDNkoppCRZmcMOQLUghOCA` for consistent setup
 - **Single topic setup** using "JPT" topic for producer-consumer pattern
 - **Single broker setup** suitable for development; easily scalable for production
 - **Persistent volumes** ensure message durability across container restarts
-- **Auto-formatting** storage directory with generated cluster ID on startup
 
 ### Production Considerations
 - Replace single Kafka broker with cluster setup
