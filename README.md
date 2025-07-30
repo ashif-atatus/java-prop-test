@@ -63,10 +63,11 @@ COPY --from=builder /app/atatus-java-agent.jar atatus-java-agent.jar
 ```
 
 ### 2. Environment Configuration
-The project uses separate environment files for different concerns:
+The project uses environment files for APM monitoring configuration:
 
 - `.env.atatus` - APM monitoring configuration
-- `.env.kafka` - Message broker settings (used internally by Kafka container)
+
+All Kafka settings are configured directly in `docker-compose.yml`.
 
 ### Environment Files Overview
 
@@ -84,21 +85,6 @@ ATATUS_ANALYTICS_CAPTURE_OUTGOING=true
 ATATUS_DEBUG=true
 ```
 
-#### Kafka Configuration (`.env.kafka`)
-```bash
-KAFKA_NODE_ID=1
-KAFKA_PROCESS_ROLES=controller,broker
-KAFKA_CONTROLLER_QUORUM_VOTERS=1@kafka:9093
-KAFKA_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093
-KAFKA_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
-KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
-KAFKA_CONTROLLER_LISTENER_NAMES=CONTROLLER
-KAFKA_INTER_BROKER_LISTENER_NAME=PLAINTEXT
-KAFKA_LOG_DIRS=/var/lib/kafka/data
-```
-
-Note: The Kafka cluster ID is set directly in `docker-compose.yml` as `aDNkoppCRZmcMOQLUghOCA`.
-
 #### Service Configuration (Docker Compose)
 Additional environment variables are configured in `docker-compose.yml`:
 
@@ -111,7 +97,7 @@ Additional environment variables are configured in `docker-compose.yml`:
 | `KAFKA_BOOTSTRAP_SERVERS` | Kafka connection string | `kafka:9092` | `kafka:9092` |
 
 #### Kafka Environment Variables (Docker Compose)
-Kafka configuration in `docker-compose.yml`:
+All Kafka configuration is defined directly in `docker-compose.yml`:
 
 | Variable | Value | Description |
 |----------|-------|-------------|
@@ -458,9 +444,8 @@ java-propagation-test/
 │   │   └── KafkaConsumerService.java    # Kafka message consumption
 │   ├── pom.xml                          # Maven dependencies (Spring Boot, Kafka)
 │   └── Dockerfile                       # Multi-stage build with Atatus agent
-├── docker-compose.yml                   # Service orchestration (Services + Kafka)
+├── docker-compose.yml                   # Service orchestration with Kafka configuration
 ├── .env.atatus                          # APM monitoring configuration
-├── .env.kafka                           # Kafka broker settings
 └── README.md                            # This documentation
 ```
 
@@ -471,5 +456,5 @@ java-propagation-test/
 - **KafkaProducerService**: Service 1 only - publishes messages to "JPT" topic
 - **KafkaConsumerService**: Service 2 only - consumes messages from "JPT" topic with JSON parsing
 - **Dockerfiles**: Multi-stage builds that automatically download Atatus agent
-- **Docker Compose**: Orchestrates all services with proper networking and environment variables
-- **Environment Files**: Separated configuration for APM monitoring and Kafka settings
+- **Docker Compose**: Orchestrates all services with Kafka configuration and networking
+- **Environment File**: APM monitoring configuration only (`.env.atatus`)
